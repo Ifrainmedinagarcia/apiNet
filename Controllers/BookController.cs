@@ -3,11 +3,12 @@ using API.Entities;
 using AutoMapper;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 
 namespace API.Controllers;
 
 [ApiController]
-[Route("/api/books")]
+[Route("api/books")]
 public class BookController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
@@ -20,12 +21,17 @@ public class BookController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<List<BookDTo>>> Get()
+    public async Task<ActionResult<List<BookDToWithAuthors>>> Get()
     {
         try
         {
-            var bookDb = await _context.Books.ToListAsync();
-            var book = _mapper.Map<List<BookDTo>>(bookDb);
+            var bookDb = await _context.Books
+                .Include(book => book.Comments)
+                .Include(book=> book.AuthorsBooks)
+                .ThenInclude(x => x.Author)
+                .ToListAsync();
+            
+            var book = _mapper.Map<List<BookDToWithAuthors>>(bookDb);
             return Ok(book);
         }
         catch (Exception e)
@@ -34,14 +40,17 @@ public class BookController : ControllerBase
         }
     }
 
-    [HttpGet]
-    [Route("{id:int}")]
-    public async Task<ActionResult<BookDTo>> GetById(int id)
+    [HttpGet("{id:int}", Name = "GetBookById")]
+    public async Task<ActionResult<BookDToWithAuthors>> GetById(int id)
     {
         try
         {
-            var bookDb = await _context.Books.FirstOrDefaultAsync(x => x.Id == id);
-            var book = _mapper.Map<BookDTo>(bookDb);
+            var bookDb = await _context.Books
+                .Include(x => x.Comments)
+                .Include(x=> x.AuthorsBooks)
+                .ThenInclude(x => x.Author)
+                .FirstOrDefaultAsync(x => x.Id == id);
+            var book = _mapper.Map<BookDToWithAuthors>(bookDb);
             return Ok(book);
         }
         catch (Exception e)
@@ -55,7 +64,8 @@ public class BookController : ControllerBase
     {
         try
         {
-            var theBookDoesExist = await _context.Books.AnyAsync(x=> x.Title == bookCreationDTo.Title);
+            var theBookDoesExist = await _context.Books
+                .AnyAsync(x=> x.Title == bookCreationDTo.Title);
             if(theBookDoesExist) 
                 return BadRequest();
 
@@ -63,7 +73,9 @@ public class BookController : ControllerBase
             _context.Add(newBook);
             await _context.SaveChangesAsync();
 
-            return Ok();
+            var book = _mapper.Map<BookDTo>(newBook);
+
+            return CreatedAtRoute("GetBookById", new { id = newBook.Id }, book);
 
         }
         catch (Exception e)
@@ -72,22 +84,24 @@ public class BookController : ControllerBase
         }
     }
 
-    [HttpPut]
-    [Route("{id:int}")]
+    [HttpPut("{id:int}")]
     public async Task<ActionResult> Put(int id, BookCreationDTo bookCreationDTo)
     {
         try
         {
-            var isExist = await _context.Books.AnyAsync(x => x.Id == id);
+            var isExist = await _context.Books
+                .AnyAsync(x => x.Id == id);
+            
             if (!isExist)
                 return BadRequest("You are trying to update a book that doesn't exist");
 
-            var book = await _context.Books.FirstOrDefaultAsync(x => x.Id == id);
-            book.Title = bookCreationDTo.Title;
-                
+            var book = _mapper.Map<Book>(bookCreationDTo);
+            book.Id = id;
+            
+            _context.Update(book);
             await _context.SaveChangesAsync();
             
-            return Ok();
+            return NoContent();
 
         }
         catch (Exception e)
@@ -96,8 +110,7 @@ public class BookController : ControllerBase
         }
     }
 
-    [HttpDelete]
-    [Route("{id:int}")]
+    [HttpDelete(("{id:int}"))]
     public async Task<ActionResult> Delete(int id)
     {
         try
@@ -116,5 +129,4 @@ public class BookController : ControllerBase
             return BadRequest(e);
         }
     }
-
 }

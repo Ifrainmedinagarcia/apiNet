@@ -24,7 +24,10 @@ public class AuthorController : ControllerBase
     {
         try
         {
-            var authorsDb = await _context.Authors.ToListAsync();
+            var authorsDb = await _context.Authors
+                .Include(x => x.AuthorsBooks)
+                .ThenInclude(x => x.Book)
+                .ToListAsync();
             var authors = _mapper.Map<List<AuthorDto>>(authorsDb);
             return Ok(authors);
         }
@@ -34,13 +37,15 @@ public class AuthorController : ControllerBase
         }
     }
 
-    [HttpGet]
-    [Route("{id:int}")]
+    [HttpGet("{id:int}", Name = "GetAuthorById ")]
     public async Task<ActionResult<AuthorDto>> GeyById(int id)
     {
         try
         {
-            var authorDb = await _context.Authors.FirstOrDefaultAsync(x => x.Id == id);
+            var authorDb = await _context.Authors
+                .Include(x => x.AuthorsBooks)
+                .ThenInclude(x => x.Book)
+                .FirstOrDefaultAsync(x => x.Id == id);
             if (authorDb is null)
             {
                 return NotFound($"The Author with Id {id} doesnt exist");
@@ -63,8 +68,9 @@ public class AuthorController : ControllerBase
             var author = _mapper.Map<Author>(authorCreationDTo);
             _context.Add(author);
             await _context.SaveChangesAsync();
-            return Ok();
-
+            
+            var authorDTo = _mapper.Map<AuthorDto>(author);
+            return CreatedAtRoute("GetAuthorById ", new { id = author.Id }, authorDTo);
         }
         catch (Exception e)
         {
@@ -84,13 +90,12 @@ public class AuthorController : ControllerBase
                 return NotFound($"You are trying to update a register that doesnt exist");
             }
 
-            var author = await _context.Authors.FirstOrDefaultAsync(x => x.Id == id);
+            var author = _mapper.Map<Author>(authorCreationDTo);
+            author.Id = id;
 
-            author.Name = authorCreationDTo.Name;
-            
+            _context.Update(author);
             await _context.SaveChangesAsync();
-            return Ok();
-
+            return NoContent();
         }
         catch (Exception e)
         {
@@ -99,7 +104,7 @@ public class AuthorController : ControllerBase
     }
 
     [HttpDelete]
-    [Route("{id>int}")]
+    [Route("{id:int}")]
     public async Task<ActionResult> Delete(int id)
     {
         try

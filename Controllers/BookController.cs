@@ -1,6 +1,8 @@
 using API.DTOs;
 using API.Entities;
 using AutoMapper;
+using Azure;
+using Microsoft.AspNetCore.JsonPatch;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -89,25 +91,49 @@ public class BookController : ControllerBase
     {
         try
         {
-            var isExist = await _context.Books
-                .AnyAsync(x => x.Id == id);
-            
-            if (!isExist)
-                return BadRequest("You are trying to update a book that doesn't exist");
+            var bookDb = await _context.Books
+                .Include(x => x.AuthorsBooks)
+                .FirstOrDefaultAsync(x => x.Id == id);
 
-            var book = _mapper.Map<Book>(bookCreationDTo);
-            book.Id = id;
-            
-            _context.Update(book);
+            if (bookDb is null)
+                return NotFound();
+
+            bookDb = _mapper.Map(bookCreationDTo, bookDb);
+
             await _context.SaveChangesAsync();
-            
-            return NoContent();
 
+            return NoContent();
         }
         catch (Exception e)
         {
             return BadRequest(e);
         }
+    }
+
+    [HttpPatch("{id:int}")]
+    public async Task<ActionResult> Patch(int id, JsonPatchDocument<BookPatchDTo> patchDocument)
+    {
+        if (patchDocument is null)
+            return BadRequest();
+
+        var bookDb = await _context.Books.FirstOrDefaultAsync(x => x.Id == id);
+
+        if (bookDb is null)
+            return NotFound();
+
+        var bookDTo = _mapper.Map<BookPatchDTo>(bookDb);
+        
+        patchDocument.ApplyTo(bookDTo, ModelState);
+
+        var isValid = TryValidateModel(bookDb);
+
+        if (!isValid)
+            return BadRequest(ModelState);
+
+        _mapper.Map(bookDTo, bookDb);
+
+        await _context.SaveChangesAsync();
+        return NoContent();
     }
 
     [HttpDelete(("{id:int}"))]

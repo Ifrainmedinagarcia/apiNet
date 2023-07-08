@@ -33,7 +33,11 @@ public class AutoMapperProfiles : Profile
                     options => options.MapFrom(MapAuthorBooks));
             CreateMap<CommentCreationDTo, Comment>();
         #endregion
-        
+
+        #region PatchMapper
+        CreateMap<BookPatchDTo, Book>().ReverseMap();
+        #endregion
+
     }
 
     private static List<AuthorDto> MapAuthorBooks(Book book, BookDTo bookDTo)

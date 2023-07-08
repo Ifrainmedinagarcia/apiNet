@@ -20,8 +20,9 @@ public class Startup
         });
 
         serviceCollection.AddControllers()
-            .AddJsonOptions(x => x.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles);
-
+            .AddJsonOptions(x => 
+                x.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles)
+            .AddNewtonsoftJson();
 
         serviceCollection.AddControllers();
         

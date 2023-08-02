@@ -1,34 +1,45 @@
 using API.DTOs;
 using API.Entities;
+using API.Utils;
 using AutoMapper;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-namespace API.Controllers;
+namespace API.Controllers.v1;
 
 [ApiController]
-[Route("api/authors")]
+[Route("api/v1/authors")]
+[Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "IsAdmin")]
 public class AuthorController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
     private readonly IMapper _mapper;
+    private readonly IConfiguration _configuration;
 
-    public AuthorController(ApplicationDbContext context, IMapper mapper)
+    public AuthorController(ApplicationDbContext context, IMapper mapper, IConfiguration configuration)
     {
         _context = context;
         _mapper = mapper;
+        _configuration = configuration;
     }
-
-    [HttpGet]
-    public async Task<ActionResult<List<AuthorDto>>> Get()
+    
+    [HttpGet(Name = "GetAuthors")]
+    [AllowAnonymous]
+    public async Task<ActionResult<List<AuthorDToWithBooks>>> Get([FromQuery] PaginationDTo paginationDTo)
     {
         try
         {
-            var authorsDb = await _context.Authors
+            var queryable = _context.Authors.AsQueryable();
+            await HttpContext.EnterParametersPaginationInHeader(queryable);
+            
+            var authorsDb = await queryable.OrderBy(x => x.Name)
+                .Pagination(paginationDTo)
                 .Include(x => x.AuthorsBooks)
                 .ThenInclude(x => x.Book)
                 .ToListAsync();
-            var authors = _mapper.Map<List<AuthorDto>>(authorsDb);
+            var authors = _mapper.Map<List<AuthorDToWithBooks>>(authorsDb);
             return Ok(authors);
         }
         catch (Exception e)
@@ -38,7 +49,7 @@ public class AuthorController : ControllerBase
     }
 
     [HttpGet("{id:int}", Name = "GetAuthorById ")]
-    public async Task<ActionResult<AuthorDto>> GeyById(int id)
+    public async Task<ActionResult<AuthorDToWithBooks>> GeyById(int id)
     {
         try
         {
@@ -50,7 +61,7 @@ public class AuthorController : ControllerBase
             {
                 return NotFound($"The Author with Id {id} doesnt exist");
             }
-            var author = _mapper.Map<AuthorDto>(authorDb);
+            var author = _mapper.Map<AuthorDToWithBooks>(authorDb);
             return Ok(author);
 
         }
@@ -60,7 +71,15 @@ public class AuthorController : ControllerBase
         }
     }
 
-    [HttpPost]
+    [HttpGet("{name}", Name = "GetAuthorByName")]
+    public async Task<ActionResult<List<AuthorDToWithBooks>>> GeyByName(string name)
+    {
+        var authorDb = await _context.Authors.Where(x => x.Name == name).ToListAsync();
+        var author = _mapper.Map<List<AuthorDToWithBooks>>(authorDb);
+        return Ok(author);
+    }
+
+    [HttpPost(Name = "CreateAuthor")]
     public async Task<ActionResult> Post(AuthorCreationDTo authorCreationDTo)
     {
         try
@@ -78,8 +97,7 @@ public class AuthorController : ControllerBase
         }
     }
 
-    [HttpPut]
-    [Route("{id:int}")]
+    [HttpPut("{id:int}", Name = "UpdateAuthor")]
     public async Task<ActionResult> Put(int id, AuthorCreationDTo authorCreationDTo)
     {
         try
@@ -87,10 +105,11 @@ public class AuthorController : ControllerBase
             var isExist = await _context.Authors.AnyAsync(x => x.Id == id);
             if (!isExist)
             {
-                return NotFound($"You are trying to update a register that doesnt exist");
+                return NotFound($"You are trying to update a register that doesn't exist");
             }
 
             var author = _mapper.Map<Author>(authorCreationDTo);
+            
             author.Id = id;
 
             _context.Update(author);
@@ -102,9 +121,14 @@ public class AuthorController : ControllerBase
             return BadRequest(e);
         }
     }
-
-    [HttpDelete]
-    [Route("{id:int}")]
+    
+    
+    /// <summary>
+    /// Delete an Author
+    /// </summary>
+    /// <param name="id">Author's id to delete</param>
+    /// <returns>NoContent</returns>
+    [HttpDelete("{id:int}", Name = "DeleteAuthor")]
     public async Task<ActionResult> Delete(int id)
     {
         try
@@ -116,7 +140,7 @@ public class AuthorController : ControllerBase
             }
             _context.Remove(new Author() { Id = id });
             await _context.SaveChangesAsync();
-            return Ok();
+            return NoContent();
         }
         catch (Exception e)
         {

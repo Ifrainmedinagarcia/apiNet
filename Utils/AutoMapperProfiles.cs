@@ -35,9 +35,8 @@ public class AutoMapperProfiles : Profile
         #endregion
 
         #region PatchMapper
-        CreateMap<BookPatchDTo, Book>().ReverseMap();
+            CreateMap<BookPatchDTo, Book>().ReverseMap();
         #endregion
-
     }
 
     private static List<AuthorDto> MapAuthorBooks(Book book, BookDTo bookDTo)

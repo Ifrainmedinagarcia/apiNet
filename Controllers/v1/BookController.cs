@@ -7,10 +7,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
-namespace API.Controllers;
+namespace API.Controllers.v1;
 
 [ApiController]
-[Route("api/books")]
+[Route("api/v1/books")]
 public class BookController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
@@ -22,7 +22,7 @@ public class BookController : ControllerBase
         _mapper = mapper;
     }
 
-    [HttpGet]
+    [HttpGet(Name = "GetBooks")]
     public async Task<ActionResult<List<BookDToWithAuthors>>> Get()
     {
         try
@@ -61,7 +61,15 @@ public class BookController : ControllerBase
         }
     }
 
-    [HttpPost]
+    [HttpGet("{title}", Name = "GetBookByName")]
+    public async Task<ActionResult<List<BookDTo>>> GetBookByName(string title)
+    {
+        var bookDb = await _context.Books.Where(x => x.Title == title).ToListAsync();
+        var book = _mapper.Map<List<BookDTo>>(bookDb);
+        return Ok(book);
+    }
+
+    [HttpPost(Name = "CreateBook")]
     public async Task<ActionResult> Post(BookCreationDTo bookCreationDTo)
     {
         try
@@ -86,7 +94,7 @@ public class BookController : ControllerBase
         }
     }
 
-    [HttpPut("{id:int}")]
+    [HttpPut("{id:int}", Name = "UpdateBook")]
     public async Task<ActionResult> Put(int id, BookCreationDTo bookCreationDTo)
     {
         try
@@ -98,7 +106,7 @@ public class BookController : ControllerBase
             if (bookDb is null)
                 return NotFound();
 
-            bookDb = _mapper.Map(bookCreationDTo, bookDb);
+            _mapper.Map(bookCreationDTo, bookDb);
 
             await _context.SaveChangesAsync();
 
@@ -110,33 +118,40 @@ public class BookController : ControllerBase
         }
     }
 
-    [HttpPatch("{id:int}")]
+    [HttpPatch("{id:int}", Name = "UpdateBookPartial")]
     public async Task<ActionResult> Patch(int id, JsonPatchDocument<BookPatchDTo> patchDocument)
     {
-        if (patchDocument is null)
-            return BadRequest();
+        try
+        {
+            if (patchDocument is null)
+                return BadRequest();
 
-        var bookDb = await _context.Books.FirstOrDefaultAsync(x => x.Id == id);
+            var bookDb = await _context.Books.FirstOrDefaultAsync(x => x.Id == id);
 
-        if (bookDb is null)
-            return NotFound();
+            if (bookDb is null)
+                return NotFound();
 
-        var bookDTo = _mapper.Map<BookPatchDTo>(bookDb);
-        
-        patchDocument.ApplyTo(bookDTo, ModelState);
+            var bookDTo = _mapper.Map<BookPatchDTo>(bookDb);
+            
+            patchDocument.ApplyTo(bookDTo, ModelState);
 
-        var isValid = TryValidateModel(bookDb);
+            var isValid = TryValidateModel(bookDb);
 
-        if (!isValid)
-            return BadRequest(ModelState);
+            if (!isValid)
+                return BadRequest(ModelState);
 
-        _mapper.Map(bookDTo, bookDb);
+            _mapper.Map(bookDTo, bookDb);
 
-        await _context.SaveChangesAsync();
-        return NoContent();
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
+        catch (Exception e)
+        {
+            return BadRequest(e);
+        }
     }
 
-    [HttpDelete(("{id:int}"))]
+    [HttpDelete("{id:int}", Name = "DeleteBook")]
     public async Task<ActionResult> Delete(int id)
     {
         try
@@ -148,7 +163,7 @@ public class BookController : ControllerBase
 
             _context.Remove(bookToDelete);
             await _context.SaveChangesAsync();
-            return Ok();
+            return NoContent();
         }
         catch (Exception e)
         {
